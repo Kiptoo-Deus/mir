@@ -25,6 +25,7 @@
 #include <mir/wayland/protocol_error.h>
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 namespace mf = mir::frontend;
@@ -135,16 +136,38 @@ public:
     void set_stopped() override;
 
 private:
+    /// The metadata described by the size event.
+    struct FrameMetadata
+    {
+        geom::Size buffer_size;
+        geom::Size logical_size;
+
+        auto operator==(FrameMetadata const&) const -> bool = default;
+    };
+
+    struct Frame
+    {
+        std::shared_ptr<mg::Buffer> buffer;
+        /// The source size at the time the frame was captured.
+        geom::Size logical_size;
+
+        auto metadata() const -> FrameMetadata { return {buffer->size(), logical_size}; }
+    };
+
     void capture_frame();
-    void publish(std::shared_ptr<mg::Buffer> buffer);
+    void frame_captured(Frame frame);
+    void publish(Frame const& frame);
 
     BufferPool pool;
     mw::Weak<mf::ExtForeignBufferV1> foreign_buffer;
-    std::shared_ptr<mg::Buffer> curent_buffer;
-    /// The buffer size sent in the size event for the current foreign buffer. Unset until the
-    /// first frame is published after get_buffer(). Any later frame with a different size
+    /// The most recent successfully captured frame. It outlives any single foreign buffer, so
+    /// that a buffer requested while the source is unchanged, or after it has stopped, can be
+    /// given the last content without waiting for damage that may never come.
+    std::optional<Frame> latest_frame;
+    /// The metadata sent in the size event for the current foreign buffer. Unset until the
+    /// first frame is published after get_buffer(). Any later frame with different metadata
     /// invalidates the buffer, so the client has to request a new one.
-    std::optional<geom::Size> last_reported_buffer_size;
+    std::optional<FrameMetadata> reported_metadata;
     /// The size of the capture source, as reported by the backend. Composited captures are
     /// rendered at this size, and it is sent as the logical size in the size event. Empty
     /// until the backend reports it, and capture is skipped while it is empty.
@@ -169,9 +192,12 @@ void ExtForeignBufferSessionV1::get_buffer(wl_resource* buffer)
     auto const created = new mf::ExtForeignBufferV1{buffer};
     invalidated = false;
 
-    curent_buffer.reset();
-    last_reported_buffer_size.reset();
+    reported_metadata.reset();
     foreign_buffer = mw::make_weak(created);
+    if (latest_frame)
+    {
+        publish(*latest_frame);
+    }
     capture_frame();
 }
 
@@ -206,17 +232,20 @@ void ExtForeignBufferSessionV1::capture_frame()
     // separate from any other consumer of the same surface.
     if (auto content = backend->acquire_content(this))
     {
-        publish(std::move(content));
+        frame_captured({std::move(content), source_size});
         return;
     }
 
-    // If acquiring a zero-copy buffer fails, then composite the content instead.
-    auto const target = pool.next(source_size);
+    // If acquiring a zero-copy buffer fails, then composite the content into a buffer on the side.
+    // It only replaces `latest_frame` once the capture succeeds.
+    auto const logical_size = source_size;
+    auto const target = pool.next(logical_size);
     capture_in_flight = true;
     backend->begin_capture(
         mrs::as_write_mappable(target),
-        {{}, source_size},
-        [weak_self = mw::make_weak(this), target](mf::ExtImageCopyBackend::CaptureResult const& result)
+        {{}, logical_size},
+        [weak_self = mw::make_weak(this), target, logical_size](
+            mf::ExtImageCopyBackend::CaptureResult const& result)
         {
             if (!weak_self)
             {
@@ -227,44 +256,58 @@ void ExtForeignBufferSessionV1::capture_frame()
             self.capture_in_flight = false;
             if (result)
             {
-                self.publish(target);
+                self.frame_captured({target, logical_size});
             }
 
             // Damage that arrived while the capture was running was skipped, and nothing else
             // will come back to collect it. We spawn this work on an executor so that it happens
             // after `begin_capture` has time to return and potentially set the current damage
-            // to none.
+            // to zero.
             self.executor->spawn([weak_self]
             {
                 if (!weak_self)
                 {
                     return;
                 }
-    
+
                 auto& self = weak_self.value();
-                self.maybe_capture_frame(); 
+                self.maybe_capture_frame();
             });
         });
 }
 
-void ExtForeignBufferSessionV1::publish(std::shared_ptr<mg::Buffer> buffer)
+void ExtForeignBufferSessionV1::frame_captured(Frame frame)
 {
-    if (!buffer)
+    latest_frame = std::move(frame);
+    publish(*latest_frame);
+}
+
+void ExtForeignBufferSessionV1::publish(Frame const& frame)
+{
+    if (!foreign_buffer)
     {
         return;
     }
 
-    curent_buffer = std::move(buffer);
-    if (!last_reported_buffer_size)
+    auto const metadata = frame.metadata();
+    if (!reported_metadata)
     {
-        last_reported_buffer_size = curent_buffer->size();
+        // A frame captured before the source resized would be invalidated as soon as it was
+        // described, so wait for the capture at the new size instead. Once stopped, no such
+        // capture will come, and the last content is all there is.
+        if (!stopped && frame.logical_size != source_size)
+        {
+            return;
+        }
+
+        reported_metadata = metadata;
         send_size_event(
-            last_reported_buffer_size->width.as_uint32_t(),
-            last_reported_buffer_size->height.as_uint32_t(),
-            source_size.width.as_uint32_t(),
-            source_size.height.as_uint32_t());
+            metadata.buffer_size.width.as_uint32_t(),
+            metadata.buffer_size.height.as_uint32_t(),
+            metadata.logical_size.width.as_uint32_t(),
+            metadata.logical_size.height.as_uint32_t());
     }
-    else if (curent_buffer->size() != last_reported_buffer_size)
+    else if (metadata != reported_metadata)
     {
         if (!invalidated)
         {
@@ -274,10 +317,7 @@ void ExtForeignBufferSessionV1::publish(std::shared_ptr<mg::Buffer> buffer)
         return;
     }
 
-    if (foreign_buffer)
-    {
-        foreign_buffer.value().set_content(curent_buffer);
-    }
+    foreign_buffer.value().set_content(frame.buffer);
 }
 
 void ExtForeignBufferSessionV1::set_buffer_constraints(geom::Size const& size)
