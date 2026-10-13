@@ -688,7 +688,7 @@ void mf::WlSurface::foreign_buffer_updated()
         current_buffer = std::move(content);
         if (submit_current_buffer())
         {
-            refresh_surface_data_now();
+            role->compositor_owned_buffer_changed_size();
         }
     }
 }
