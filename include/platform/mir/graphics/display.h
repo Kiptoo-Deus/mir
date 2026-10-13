@@ -38,6 +38,17 @@ using DisplayResumeHandler = std::function<bool()>;
 using DisplayConfigurationChangeHandler = std::function<void()>;
 
 /**
+ * The result of a DisplaySyncGroup::post() call.
+ */
+enum class PresentationResult
+{
+    presented,         ///< The platform has confirmed the new content is onscreen
+    accepted,          ///< The platform accepted the content, but has not confirmed presentation
+    nothing_submitted, ///< There was no new content to show; what is onscreen is unchanged
+    failed,            ///< Presentation failed. The caller must decide how to recover.
+};
+
+/**
  * DisplaySyncGroup represents a group of displays that need to be output
  * in unison as a single post() call.
  * This is only appropriate for platforms whose post() calls are non-blocking
@@ -61,10 +72,12 @@ public:
      *  in the near future. On some platforms, this may wait a potentially long time for vsync.
      *
      *  \returns
-     *      `true` if the platform accepted the new content or if there was no new content to show.
-     *      `false` if presentation failed. The caller must decide how to recover.
+     *      `presented` if the platform has confirmed the new content is onscreen.
+     *      `accepted` if the platform accepted the new content, but presentation is not confirmed.
+     *      `nothing_submitted` if there was no new content to show.
+     *      `failed` if presentation failed. The caller must decide how to recover.
     **/
-    [[nodiscard]] virtual bool post() = 0;
+    [[nodiscard]] virtual PresentationResult post() = 0;
 
     /**
      * Returns a recommendation to the compositor as to how long it should

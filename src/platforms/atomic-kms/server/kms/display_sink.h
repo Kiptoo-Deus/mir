@@ -101,7 +101,7 @@ public:
 
     void for_each_display_sink(
         std::function<void(graphics::DisplaySink&)> const& f) override;
-    bool post() override;
+    PresentationResult post() override;
     std::chrono::milliseconds recommended_sleep() const override;
 
     glm::mat2 transformation() const override;

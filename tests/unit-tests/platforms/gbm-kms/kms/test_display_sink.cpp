@@ -228,7 +228,7 @@ struct PostCase
 {
     bool flip_ok;
     std::optional<bool> crtc_ok;
-    bool expected;
+    PresentationResult expected;
     int wait_count;
 };
 
@@ -273,7 +273,9 @@ TEST_P(MesaPostResult, post_reports_presentation_result)
 INSTANTIATE_TEST_SUITE_P(
     Presentation,
     MesaPostResult,
-    Values(PostCase{true, std::nullopt, true, 1}, PostCase{false, false, false, 0}, PostCase{false, true, true, 0}),
+    Values(PostCase{true, std::nullopt, PresentationResult::presented, 1},
+           PostCase{false, false, PresentationResult::failed, 0},
+           PostCase{false, true, PresentationResult::presented, 0}),
     [](TestParamInfo<PostCase> const& info)
     {
         if (info.param.flip_ok)

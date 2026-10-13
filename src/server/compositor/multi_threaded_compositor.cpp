@@ -196,7 +196,7 @@ public:
                     // We can skip the post if none of the compositors ended up compositing
                     if (needs_post)
                     {
-                        if (!group.post())
+                        if (group.post() == mg::PresentationResult::failed)
                         {
                             // TODO Schedule a recovery frame immediately
                         }

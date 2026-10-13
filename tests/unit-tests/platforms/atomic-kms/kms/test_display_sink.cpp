@@ -104,7 +104,7 @@ struct PostCase
 {
     bool flip_ok;
     std::optional<bool> crtc_ok;
-    bool expected;
+    mg::PresentationResult expected;
 };
 
 class AtomicPostResult : public AtomicDisplaySinkTest, public WithParamInterface<PostCase>
@@ -138,7 +138,9 @@ TEST_P(AtomicPostResult, post_reports_presentation_result)
 INSTANTIATE_TEST_SUITE_P(
     Presentation,
     AtomicPostResult,
-    Values(PostCase{true, std::nullopt, true}, PostCase{false, true, true}, PostCase{false, false, false}),
+    Values(PostCase{true, std::nullopt, mg::PresentationResult::presented},
+           PostCase{false, true, mg::PresentationResult::presented},
+           PostCase{false, false, mg::PresentationResult::failed}),
     [](TestParamInfo<PostCase> const& info)
     {
         if (info.param.flip_ok)
@@ -155,7 +157,7 @@ TEST_F(AtomicDisplaySinkTest, post_is_a_noop_without_a_queued_frame)
     EXPECT_CALL(*output, set_crtc(_))
         .Times(0);
 
-    EXPECT_TRUE(sink->post());
+    EXPECT_EQ(mg::PresentationResult::nothing_submitted, sink->post());
 }
 
 TEST_F(AtomicDisplaySinkTest, failed_post_keeps_the_previously_visible_framebuffer_alive)
@@ -178,18 +180,18 @@ TEST_F(AtomicDisplaySinkTest, failed_post_keeps_the_previously_visible_framebuff
 
     ASSERT_TRUE(sink->overlay({fullscreen_element(frame_a)}));
     frame_a.reset();
-    ASSERT_TRUE(sink->post());
+    ASSERT_EQ(mg::PresentationResult::presented, sink->post());
     EXPECT_FALSE(weak_a.expired());
 
     ASSERT_TRUE(sink->overlay({fullscreen_element(frame_b)}));
     frame_b.reset();
-    EXPECT_FALSE(sink->post());
+    EXPECT_EQ(mg::PresentationResult::failed, sink->post());
     EXPECT_FALSE(weak_a.expired());
     EXPECT_TRUE(weak_b.expired());
-    EXPECT_TRUE(sink->post());
+    EXPECT_EQ(mg::PresentationResult::nothing_submitted, sink->post());
 
     ASSERT_TRUE(sink->overlay({fullscreen_element(frame_c)}));
-    EXPECT_TRUE(sink->post());
+    EXPECT_EQ(mg::PresentationResult::presented, sink->post());
     EXPECT_TRUE(weak_a.expired());
 }
 

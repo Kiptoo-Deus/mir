@@ -79,10 +79,10 @@ struct CountingDisplaySyncGroup : public mtd::StubDisplaySyncGroup
     {
     }
 
-    bool post() override
+    mg::PresentationResult post() override
     {
         increment_post_count();
-        return true;
+        return mg::PresentationResult::presented;
     }
 
     bool has_posted_at_least(unsigned int count, std::chrono::system_clock::time_point& timeout)

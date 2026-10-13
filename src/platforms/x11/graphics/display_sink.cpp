@@ -119,11 +119,11 @@ void mgx::DisplaySink::for_each_display_sink(std::function<void(graphics::Displa
     f(*this);
 }
 
-bool mgx::DisplaySink::post()
+auto mgx::DisplaySink::post() -> PresentationResult
 {
     next_frame->swap_buffers();
     next_frame.reset();
-    return true;
+    return PresentationResult::accepted;
 }
 
 std::chrono::milliseconds mgx::DisplaySink::recommended_sleep() const

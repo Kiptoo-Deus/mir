@@ -166,13 +166,13 @@ bool mga::DisplaySink::set_crtc(FBHandle const& forced_frame)
     return true;
 }
 
-bool mga::DisplaySink::post()
+mg::PresentationResult mga::DisplaySink::post()
 {
     if (!next_swap)
     {
         // Hey! No one has given us a next frame yet, so we don't have to change what's onscreen.
         // Sweet! We can just bail.
-        return true;
+        return mg::PresentationResult::nothing_submitted;
     }
     /*
      * Otherwise, pull the next frame into the pending slot
@@ -218,7 +218,7 @@ bool mga::DisplaySink::post()
     if (predicted_render_time < min_frame_interval)
         recommend_sleep = min_frame_interval - predicted_render_time;
 
-    return presentation_succeeded;
+    return presentation_succeeded ? mg::PresentationResult::presented : mg::PresentationResult::failed;
 }
 
 std::chrono::milliseconds mga::DisplaySink::recommended_sleep() const

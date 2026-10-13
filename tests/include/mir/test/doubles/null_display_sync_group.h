@@ -46,11 +46,11 @@ public:
             f(db);
     }
 
-    bool post() override
+    graphics::PresentationResult post() override
     {
         /* yield() is needed to ensure reasonable runtime under valgrind for some tests */
         std::this_thread::yield();
-        return true;
+        return graphics::PresentationResult::presented;
     }
 
     std::chrono::milliseconds recommended_sleep() const override
@@ -69,11 +69,11 @@ struct NullDisplaySyncGroup : graphics::DisplaySyncGroup
     {
         f(db);
     }
-    virtual bool post() override
+    virtual graphics::PresentationResult post() override
     {
         /* yield() is needed to ensure reasonable runtime under valgrind for some tests */
         std::this_thread::yield();
-        return true;
+        return graphics::PresentationResult::presented;
     }
 
     std::chrono::milliseconds recommended_sleep() const override

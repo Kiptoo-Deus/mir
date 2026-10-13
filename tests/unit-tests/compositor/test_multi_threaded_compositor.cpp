@@ -82,7 +82,7 @@ private:
         {
             f(buffer);
         }
-        bool post() override { return true; }
+        mg::PresentationResult post() override { return mg::PresentationResult::presented; }
         std::chrono::milliseconds recommended_sleep() const override
         {
             return std::chrono::milliseconds::zero();
