@@ -744,6 +744,16 @@ void mf::WlSurface::commit()
                 "Timeline acquire sync point set, but no buffer committed"};
         }
 
+        // Foreign buffers are compositor-owned and continuously updated, so there is no client
+        // rendering to wait on and no point at which the client's release point could be signalled.
+        if (ExtForeignBufferV1::from(pending.buffer->value()))
+        {
+            throw wayland::ProtocolError{
+                sync_timeline.value().resource,
+                SyncTimeline::Error::unsupported_buffer,
+                "Explicit synchronization is not supported for ext_foreign_buffer_v1 buffers"};
+        }
+
         pending_context = std::make_unique<PendingBufferState>(PendingBufferState{
             this,
             acquire_syncpoint->to_eventfd(),
