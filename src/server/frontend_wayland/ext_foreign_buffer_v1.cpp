@@ -240,9 +240,9 @@ void ExtForeignBufferSessionV1::capture_frame()
                 {
                     return;
                 }
-    
+
                 auto& self = weak_self.value();
-                self.maybe_capture_frame(); 
+                self.maybe_capture_frame();
             });
         });
 }
