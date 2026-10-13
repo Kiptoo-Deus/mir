@@ -18,6 +18,7 @@
 #include "ext_image_capture_v1.h"
 #include "wl_surface.h"
 
+#include <mir/executor.h>
 #include <mir/graphics/buffer.h>
 #include <mir/graphics/graphic_buffer_allocator.h>
 #include <mir/renderer/sw/pixel_source.h>
@@ -80,12 +81,14 @@ class ExtForeignBufferManagerV1Global : public mw::ForeignBufferManagerV1::Globa
 public:
     ExtForeignBufferManagerV1Global(
         wl_display* display,
-        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator);
+        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
+        std::shared_ptr<mir::Executor> const& executor);
 
 private:
     void bind(wl_resource* new_resource) override;
 
     std::shared_ptr<mg::GraphicBufferAllocator> const allocator;
+    std::shared_ptr<mir::Executor> executor;
 };
 
 class ExtForeignBufferManagerV1 : public mw::ForeignBufferManagerV1
@@ -93,9 +96,11 @@ class ExtForeignBufferManagerV1 : public mw::ForeignBufferManagerV1
 public:
     ExtForeignBufferManagerV1(
         wl_resource* resource,
-        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator) :
+        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
+        std::shared_ptr<mir::Executor> const& executor) :
         mw::ForeignBufferManagerV1(resource, Version<1>()),
-        allocator{allocator}
+        allocator{allocator},
+        executor{executor}
     {
     }
 
@@ -103,6 +108,7 @@ private:
     void get_session(wl_resource* session, wl_resource* source) override;
 
     std::shared_ptr<mg::GraphicBufferAllocator> const allocator;
+    std::shared_ptr<mir::Executor> executor;
 };
 
 class ExtForeignBufferSessionV1 : public mw::ForeignBufferSessionV1, public mf::ExtImageCopyBackendSession
@@ -111,10 +117,12 @@ public:
     ExtForeignBufferSessionV1(
         wl_resource* resource,
         mf::ExtImageCopyBackendFactory const& factory,
-        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator) :
+        std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
+        std::shared_ptr<mir::Executor> const& executor) :
         mw::ForeignBufferSessionV1(resource, Version<1>()),
         pool{allocator},
-        backend{factory(this, false)}
+        backend{factory(this, false)},
+        executor{executor}
     {
     }
 
@@ -145,6 +153,7 @@ private:
     bool invalidated{false};
     bool stopped{false};
     std::shared_ptr<mf::ExtImageCopyBackend> backend;
+    std::shared_ptr<mir::Executor> executor;
 };
 
 void ExtForeignBufferSessionV1::get_buffer(wl_resource* buffer)
@@ -222,8 +231,19 @@ void ExtForeignBufferSessionV1::capture_frame()
             }
 
             // Damage that arrived while the capture was running was skipped, and nothing else
-            // will come back to collect it.
-            self.maybe_capture_frame();
+            // will come back to collect it. We spawn this work on an executor so that it happens
+            // after `begin_capture` has time to return and potentially set the current damage
+            // to none.
+            self.executor->spawn([weak_self]
+            {
+                if (!weak_self)
+                {
+                    return;
+                }
+    
+                auto& self = weak_self.value();
+                self.maybe_capture_frame(); 
+            });
         });
 }
 
@@ -289,21 +309,23 @@ void ExtForeignBufferSessionV1::set_stopped()
 
 ExtForeignBufferManagerV1Global::ExtForeignBufferManagerV1Global(
     wl_display* display,
-    std::shared_ptr<mg::GraphicBufferAllocator> const& allocator) :
+    std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
+    std::shared_ptr<mir::Executor> const& executor) :
     Global(display, Version<1>()),
-    allocator{allocator}
+    allocator{allocator},
+    executor{executor}
 {
 }
 
 void ExtForeignBufferManagerV1Global::bind(wl_resource* new_resource)
 {
-    new ExtForeignBufferManagerV1{new_resource, allocator};
+    new ExtForeignBufferManagerV1{new_resource, allocator, executor};
 }
 
 void ExtForeignBufferManagerV1::get_session(wl_resource* session, wl_resource* source)
 {
     auto const source_instance = mf::ExtImageCaptureSourceV1::from_or_throw(source);
-    new ExtForeignBufferSessionV1{session, source_instance->backend_factory, allocator};
+    new ExtForeignBufferSessionV1{session, source_instance->backend_factory, allocator, executor};
 }
 }
 
@@ -347,8 +369,9 @@ void mf::ExtForeignBufferV1::set_content(std::shared_ptr<mg::Buffer> buffer)
 
 auto mf::create_ext_foreign_buffer_manager_v1(
     wl_display* display,
-    std::shared_ptr<mg::GraphicBufferAllocator> const& allocator)
+    std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
+    std::shared_ptr<Executor> const& executor)
     -> std::shared_ptr<mw::ForeignBufferManagerV1::Global>
 {
-    return std::make_shared<ExtForeignBufferManagerV1Global>(display, allocator);
+    return std::make_shared<ExtForeignBufferManagerV1Global>(display, allocator, executor);
 }

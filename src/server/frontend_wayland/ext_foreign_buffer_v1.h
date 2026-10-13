@@ -27,6 +27,7 @@
 
 namespace mir
 {
+class Executor;
 namespace graphics
 {
 class Buffer;
@@ -69,7 +70,8 @@ private:
 
 auto create_ext_foreign_buffer_manager_v1(
     wl_display* display,
-    std::shared_ptr<graphics::GraphicBufferAllocator> const& allocator)
+    std::shared_ptr<graphics::GraphicBufferAllocator> const& allocator,
+    std::shared_ptr<Executor> const& executor)
     -> std::shared_ptr<wayland::ForeignBufferManagerV1::Global>;
 }
 }

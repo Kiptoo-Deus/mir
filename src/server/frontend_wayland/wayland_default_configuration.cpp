@@ -244,7 +244,8 @@ std::vector<ExtensionBuilder> const internal_extension_builders = {
         {
             return mf::create_ext_foreign_buffer_manager_v1(
                 ctx.display,
-                ctx.graphic_buffer_allocator);
+                ctx.graphic_buffer_allocator,
+                ctx.wayland_executor);
         }),
     make_extension_builder<mw::PrimarySelectionDeviceManagerV1>([](auto const& ctx)
         {
