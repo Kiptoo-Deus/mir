@@ -65,7 +65,8 @@ public:
         std::shared_ptr<CompositorReport> const& compositor_report,
         std::shared_ptr<graphics::Cursor> const& cursor,
         std::chrono::milliseconds fixed_composite_delay,  // -1 = automatic
-        bool compose_on_start);
+        bool compose_on_start,
+        std::chrono::milliseconds recovery_retry_interval = std::chrono::milliseconds{16});
     ~MultiThreadedCompositor();
 
     void start();
@@ -86,6 +87,7 @@ private:
 
     std::atomic<CompositorState> state;
     std::chrono::milliseconds fixed_composite_delay;
+    std::chrono::milliseconds recovery_retry_interval;
     bool compose_on_start;
 
     void schedule_compositing();

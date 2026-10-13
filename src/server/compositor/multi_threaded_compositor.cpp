@@ -89,7 +89,8 @@ public:
         std::shared_ptr<DisplayListener> const& display_listener,
         std::chrono::milliseconds fixed_composite_delay,
         std::shared_ptr<CompositorReport> const& report,
-        std::shared_ptr<mg::Cursor> const& cursor) :
+        std::shared_ptr<mg::Cursor> const& cursor,
+        std::chrono::milliseconds recovery_retry_interval) :
         compositor_factory{db_compositor_factory},
         group(group),
         scene(scene),
@@ -98,6 +99,7 @@ public:
         display_listener{display_listener},
         report{report},
         cursor{cursor},
+        recovery_retry_interval{recovery_retry_interval},
         started_future{started.get_future()},
         stopped_future{stopped.get_future()}
     {
@@ -114,6 +116,7 @@ public:
             });
 
         std::vector<std::tuple<mg::DisplaySink*, std::unique_ptr<mc::DisplayBufferCompositor>>> compositors;
+        bool recovering = false;
         group.for_each_display_sink(
         [this, &compositors](mg::DisplaySink& sink)
         {
@@ -178,7 +181,11 @@ public:
                  */
                 if (running)
                 {
+                    auto const attempt_start = std::chrono::steady_clock::now();
+                    auto const mode = recovering ?
+                        mc::CompositionMode::recovery : mc::CompositionMode::normal;
                     bool needs_post = false;
+                    bool full_scene_composited = true;
                     for (auto& tuple : compositors)
                     {
                         auto& compositor = std::get<1>(tuple);
@@ -189,17 +196,58 @@ public:
                                 scene_elements.push_back(std::make_shared<CursorSceneElement>(cursor_renderable));
                         }
 
-                        if (compositor->composite(std::move(scene_elements), mc::CompositionMode::normal) !=
-                            mc::CompositionResult::skipped)
+                        switch (compositor->composite(std::move(scene_elements), mode))
+                        {
+                        case mc::CompositionResult::skipped:
+                            break;
+                        case mc::CompositionResult::direct:
                             needs_post = true;
+                            full_scene_composited = false;
+                            break;
+                        case mc::CompositionResult::composited:
+                            needs_post = true;
+                            break;
+                        }
                     }
 
+                    bool retry = false;
                     // We can skip the post if none of the compositors ended up compositing
                     if (needs_post)
                     {
-                        if (group.post() == mg::PresentationResult::failed)
+                        switch (group.post())
                         {
-                            // TODO Schedule a recovery frame immediately
+                        case mg::PresentationResult::failed:
+                        {
+                            if (!recovering)
+                            {
+                                mir::log_warning(
+                                    "Display presentation failed; compositing recovery frames");
+                            }
+                            recovering = true;
+                            retry = true;
+                            /* Schedule a recovery frame without waiting for new client
+                             * damage; the next iteration renders the complete scene
+                             * through GL.
+                             */
+                            wakeup.raise();
+                            break;
+                        }
+                        case mg::PresentationResult::presented:
+                        {
+                            if (recovering && full_scene_composited)
+                            {
+                                recovering = false;
+                                mir::log_info("Display presentation recovered");
+                            }
+                            break;
+                        }
+                        case mg::PresentationResult::accepted:
+                        case mg::PresentationResult::nothing_submitted:
+                            /* Presentation is not confirmed, but there is nothing to gain
+                             * by re-rendering: recovery (if any) stays active until the
+                             * next wakeup.
+                             */
+                            break;
                         }
                     }
 
@@ -213,6 +261,14 @@ public:
                     auto delay = force_sleep >= std::chrono::milliseconds::zero() ?
                                  force_sleep : group.recommended_sleep();
                     std::this_thread::sleep_for(delay);
+
+                    /* Pace recovery retries to at least one frame interval, so a
+                     * persistently failing post() cannot busy-loop.
+                     */
+                    if (retry)
+                    {
+                        std::this_thread::sleep_until(attempt_start + recovery_retry_interval);
+                    }
                 }
             }
         }
@@ -276,6 +332,7 @@ private:
     std::shared_ptr<DisplayListener> const display_listener;
     std::shared_ptr<CompositorReport> const report;
     std::shared_ptr<mg::Cursor> const cursor;
+    std::chrono::milliseconds const recovery_retry_interval;
     std::promise<void> started;
     std::future<void> started_future;
     std::promise<void> stopped;
@@ -293,7 +350,8 @@ mc::MultiThreadedCompositor::MultiThreadedCompositor(
     std::shared_ptr<CompositorReport> const& compositor_report,
     std::shared_ptr<mg::Cursor> const& cursor,
     std::chrono::milliseconds fixed_composite_delay,
-    bool compose_on_start)
+    bool compose_on_start,
+    std::chrono::milliseconds recovery_retry_interval)
     : display{display},
       display_buffer_compositor_factory{db_compositor_factory},
       scene{scene},
@@ -302,6 +360,7 @@ mc::MultiThreadedCompositor::MultiThreadedCompositor(
       cursor{cursor},
       state{CompositorState::stopped},
       fixed_composite_delay{fixed_composite_delay},
+      recovery_retry_interval{recovery_retry_interval},
       compose_on_start{compose_on_start}
 {
     observer = std::make_shared<ms::SceneChangeNotification>(
@@ -396,7 +455,7 @@ void mc::MultiThreadedCompositor::create_compositing_threads()
     {
         auto thread_functor = std::make_unique<mc::CompositingFunctor>(
             display_buffer_compositor_factory, group, scene, display_listener,
-            fixed_composite_delay, report, cursor);
+            fixed_composite_delay, report, cursor, recovery_retry_interval);
 
         mir::thread_pool_executor.spawn(std::ref(*thread_functor));
         thread_functors.push_back(std::move(thread_functor));
