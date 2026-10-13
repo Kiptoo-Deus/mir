@@ -24,13 +24,34 @@ namespace mir
 namespace compositor
 {
 
+/**
+ * Whether a composition attempt may use direct presentation.
+ */
+enum class CompositionMode
+{
+    normal,    ///< Direct presentation (bypass / overlays / planes) is allowed
+    recovery,  ///< Render the complete scene through the renderer; no direct presentation
+};
+
+/**
+ * What a call to DisplayBufferCompositor::composite() produced.
+ */
+enum class CompositionResult
+{
+    skipped,     ///< Nothing was submitted to the sink; no post is needed
+    direct,      ///< Sink content uses direct presentation (bypass / overlay)
+    composited,  ///< The complete visible scene was rendered into one image
+};
+
 class DisplayBufferCompositor
 {
 public:
     virtual ~DisplayBufferCompositor() = default;
 
-    /// Returns true if any compositing happened, otherwise false.
-    virtual bool composite(SceneElementSequence&& scene_sequence) = 0;
+    /// Returns the kind of frame produced.
+    virtual CompositionResult composite(
+        SceneElementSequence&& scene_sequence,
+        CompositionMode mode) = 0;
 
 protected:
     DisplayBufferCompositor() = default;

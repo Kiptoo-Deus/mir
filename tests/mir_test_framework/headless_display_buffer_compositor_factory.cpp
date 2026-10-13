@@ -94,7 +94,9 @@ mtf::HeadlessDisplayBufferCompositorFactory::create_compositor_for(mg::DisplaySi
             return renderables;
         }
 
-        bool composite(mir::compositor::SceneElementSequence&& seq) override
+        auto composite(
+            mir::compositor::SceneElementSequence&& seq,
+            mir::compositor::CompositionMode) -> mir::compositor::CompositionResult override
         {
             auto renderlist = filter(seq, display_sink.view_area());
 
@@ -114,7 +116,7 @@ mtf::HeadlessDisplayBufferCompositorFactory::create_compositor_for(mg::DisplaySi
             }
 
             output->commit();
-            return true;
+            return mir::compositor::CompositionResult::composited;
         }
         mg::DisplaySink& display_sink;
         std::unique_ptr<mg::gl::OutputSurface> const output;

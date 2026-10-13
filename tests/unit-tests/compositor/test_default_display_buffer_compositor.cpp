@@ -160,7 +160,7 @@ struct DirectPresentationDefaultDisplayBufferCompositor : DefaultDisplayBufferCo
 };
 }
 
-TEST_F(DefaultDisplayBufferCompositor, composite_returns_false_when_scene_elements_are_empty_and_this_is_first_composite)
+TEST_F(DefaultDisplayBufferCompositor, composite_returns_skipped_when_scene_elements_are_empty_and_this_is_first_composite)
 {
     using namespace testing;
 
@@ -170,10 +170,12 @@ TEST_F(DefaultDisplayBufferCompositor, composite_returns_false_when_scene_elemen
         mt::fake_shared(mock_renderer),
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
-    EXPECT_FALSE(compositor.composite(make_scene_elements({})));
+    EXPECT_EQ(
+        mc::CompositionResult::skipped,
+        compositor.composite(make_scene_elements({}), mc::CompositionMode::normal));
 }
 
-TEST_F(DefaultDisplayBufferCompositor, composite_returns_true_when_scene_elements_is_not_empty_and_this_is_first_composite)
+TEST_F(DefaultDisplayBufferCompositor, composite_returns_composited_when_scene_elements_is_not_empty_and_this_is_first_composite)
 {
     using namespace testing;
 
@@ -183,7 +185,9 @@ TEST_F(DefaultDisplayBufferCompositor, composite_returns_true_when_scene_element
         mt::fake_shared(mock_renderer),
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
-    EXPECT_TRUE(compositor.composite(make_scene_elements({big})));
+    EXPECT_EQ(
+        mc::CompositionResult::composited,
+        compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal));
 }
 
 TEST_F(DefaultDisplayBufferCompositor, renderer_is_suspended_when_we_have_composited_twice_in_a_row_with_the_same_elements)
@@ -196,14 +200,14 @@ TEST_F(DefaultDisplayBufferCompositor, renderer_is_suspended_when_we_have_compos
         mt::fake_shared(mock_renderer),
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
-    compositor.composite(make_scene_elements({big}));
-    compositor.composite(make_scene_elements({}));
+    compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal);
+    compositor.composite(make_scene_elements({}), mc::CompositionMode::normal);
 
     EXPECT_CALL(display_sink, overlay(_))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_renderer, suspend())
         .Times(1);
-    compositor.composite(make_scene_elements({}));
+    compositor.composite(make_scene_elements({}), mc::CompositionMode::normal);
 }
 
 TEST_F(DefaultDisplayBufferCompositor, all_expected_reports_are_received_during_composite)
@@ -227,7 +231,7 @@ TEST_F(DefaultDisplayBufferCompositor, all_expected_reports_are_received_during_
         mt::fake_shared(mock_renderer),
         std::make_shared<mtd::StubOutputFilter>(),
         report);
-    compositor.composite(make_scene_elements({big}));
+    compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal);
 }
 
 TEST_F(DefaultDisplayBufferCompositor, elements_provided_to_composite_are_rendered_in_order)
@@ -246,7 +250,7 @@ TEST_F(DefaultDisplayBufferCompositor, elements_provided_to_composite_are_render
     compositor.composite(make_scene_elements({
         big,
         small
-    }));
+    }), mc::CompositionMode::normal);
 }
 
 TEST_F(DefaultDisplayBufferCompositor, viewport_is_rotated_when_display_sink_view_area_is_rotated)
@@ -278,7 +282,7 @@ TEST_F(DefaultDisplayBufferCompositor, viewport_is_rotated_when_display_sink_vie
     EXPECT_CALL(mock_renderer, set_viewport(rotated_screen))
         .InSequence(render_seq);
 
-    compositor.composite(make_scene_elements({big}));
+    compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal);
 }
 
 TEST_F(DefaultDisplayBufferCompositor, renderer_is_suspended_when_we_have_composited_many_times_in_a_row_with_the_same_elements)
@@ -291,19 +295,19 @@ TEST_F(DefaultDisplayBufferCompositor, renderer_is_suspended_when_we_have_compos
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
 
-    compositor.composite(make_scene_elements({big}));
-    compositor.composite(make_scene_elements({}));
+    compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal);
+    compositor.composite(make_scene_elements({}), mc::CompositionMode::normal);
 
     EXPECT_CALL(display_sink, overlay(_))
         .WillRepeatedly(Return(true));
     EXPECT_CALL(mock_renderer, suspend())
         .Times(1);
 
-    compositor.composite(make_scene_elements({}));
+    compositor.composite(make_scene_elements({}), mc::CompositionMode::normal);
 
     EXPECT_CALL(mock_renderer, suspend())
         .Times(1);
-    compositor.composite(make_scene_elements({}));
+    compositor.composite(make_scene_elements({}), mc::CompositionMode::normal);
 
     fullscreen->set_buffer({});  // Avoid GMock complaining about false leaks
 }
@@ -332,7 +336,7 @@ TEST_F(DefaultDisplayBufferCompositor, occluded_surfaces_are_not_rendered)
         window1, //occluded
         window2, //occluded
         window3  //not occluded
-    }));
+    }), mc::CompositionMode::normal);
 }
 
 namespace
@@ -370,7 +374,7 @@ TEST_F(DefaultDisplayBufferCompositor, marks_rendered_scene_elements)
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
 
-    compositor.composite({element0_rendered, element1_rendered});
+    compositor.composite({element0_rendered, element1_rendered}, mc::CompositionMode::normal);
 }
 
 TEST_F(DefaultDisplayBufferCompositor, marks_occluded_scene_elements)
@@ -395,7 +399,7 @@ TEST_F(DefaultDisplayBufferCompositor, marks_occluded_scene_elements)
         std::make_shared<mtd::StubOutputFilter>(),
         mr::null_compositor_report());
 
-    compositor.composite({element0_occluded, element1_rendered, element2_occluded});
+    compositor.composite({element0_occluded, element1_rendered, element2_occluded}, mc::CompositionMode::normal);
 }
 
 TEST_F(DirectPresentationDefaultDisplayBufferCompositor, eligible_output_is_overlaid)
@@ -409,7 +413,9 @@ TEST_F(DirectPresentationDefaultDisplayBufferCompositor, eligible_output_is_over
     EXPECT_CALL(mock_renderer, render(_)).Times(0);
     EXPECT_CALL(display_sink, set_next_image(_)).Times(0);
 
-    EXPECT_TRUE(compositor->composite(make_scene_elements({fullscreen})));
+    EXPECT_EQ(
+        mc::CompositionResult::direct,
+        compositor->composite(make_scene_elements({fullscreen}), mc::CompositionMode::normal));
 }
 
 namespace
@@ -452,7 +458,9 @@ TEST_P(IneligibleDefaultDisplayBufferCompositor, ineligible_output_is_composited
         .WillOnce(Return(ByMove(std::move(framebuffer))));
     EXPECT_CALL(display_sink, set_next_image(Pointer(Eq(rendered_framebuffer))));
 
-    EXPECT_TRUE(compositor->composite(make_scene_elements({fullscreen, small})));
+    EXPECT_EQ(
+        mc::CompositionResult::composited,
+        compositor->composite(make_scene_elements({fullscreen, small}), mc::CompositionMode::normal));
 }
 
 INSTANTIATE_TEST_SUITE_P(

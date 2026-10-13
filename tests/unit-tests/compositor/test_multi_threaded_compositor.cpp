@@ -150,12 +150,12 @@ public:
     {
     }
 
-    bool composite(mc::SceneElementSequence&&)
+    mc::CompositionResult composite(mc::SceneElementSequence&&, mc::CompositionMode) override
     {
         mark_render_buffer();
         /* Reduce run-time under valgrind */
         std::this_thread::yield();
-        return true;
+        return mc::CompositionResult::composited;
     }
 
 private:
@@ -267,12 +267,12 @@ public:
     {
     }
 
-    bool composite(mc::SceneElementSequence&&) override
+    mc::CompositionResult composite(mc::SceneElementSequence&&, mc::CompositionMode) override
     {
         fake_surface_update();
         /* Reduce run-time under valgrind */
         std::this_thread::yield();
-        return true;
+        return mc::CompositionResult::composited;
     }
 
 private:
