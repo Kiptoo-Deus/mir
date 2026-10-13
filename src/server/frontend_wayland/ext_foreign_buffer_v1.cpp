@@ -175,6 +175,7 @@ private:
     bool capture_in_flight{false};
     bool invalidated{false};
     bool stopped{false};
+    bool ignore_latest_capture = false;
     std::shared_ptr<mf::ExtImageCopyBackend> backend;
     std::shared_ptr<mir::Executor> executor;
 };
@@ -191,6 +192,8 @@ void ExtForeignBufferSessionV1::get_buffer(wl_resource* buffer)
 
     auto const created = new mf::ExtForeignBufferV1{buffer};
     invalidated = false;
+    if (capture_in_flight)
+        ignore_latest_capture = true;
 
     reported_metadata.reset();
     foreign_buffer = mw::make_weak(created);
@@ -254,6 +257,15 @@ void ExtForeignBufferSessionV1::capture_frame()
 
             auto& self = weak_self.value();
             self.capture_in_flight = false;
+
+            // If `get_buffer` is called while we're awaiting a capture,
+            // we can safely throwaway the result of this capture.
+            if (self.ignore_latest_capture)
+            {
+                self.ignore_latest_capture = false;
+                return;
+            }
+            
             if (result)
             {
                 self.frame_captured({target, logical_size});
