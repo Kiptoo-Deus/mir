@@ -265,7 +265,7 @@ void ExtForeignBufferSessionV1::capture_frame()
                 self.ignore_latest_capture = false;
                 return;
             }
-            
+
             if (result)
             {
                 self.frame_captured({target, logical_size});
