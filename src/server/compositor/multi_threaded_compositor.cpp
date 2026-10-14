@@ -227,7 +227,7 @@ public:
                         {
                             if (!recovering)
                             {
-                                mir::log_warning(
+                                mir::log_info(
                                     "Display presentation failed; compositing recovery frames");
                             }
                             failure_observed = true;

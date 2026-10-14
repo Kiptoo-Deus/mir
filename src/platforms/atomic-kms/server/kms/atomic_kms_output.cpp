@@ -304,8 +304,19 @@ bool mga::AtomicKMSOutput::set_crtc(FBHandle const& fb)
     auto conf = configuration.lock();
     if (!ensure_crtc(*conf))
     {
-        mir::log_error("Output %s has no associated CRTC to set a framebuffer on",
-                       mgk::connector_name(conf->connector).c_str());
+        if (!presentation_failed)
+        {
+            mir::log_warning(
+                "Output %s: presentation failed: no associated CRTC. "
+                "Screen contents may be incomplete. Try plugging the monitor in again.",
+                mgk::connector_name(conf->connector).c_str());
+            presentation_failed = true;
+        }
+        else
+        {
+            mir::log_debug("Output %s has no associated CRTC to set a framebuffer on",
+                           mgk::connector_name(conf->connector).c_str());
+        }
         return false;
     }
 
@@ -339,13 +350,33 @@ bool mga::AtomicKMSOutput::set_crtc(FBHandle const& fb)
     auto ret = drmModeAtomicCommit(drm_fd_, update, DRM_MODE_ATOMIC_ALLOW_MODESET, nullptr);
     if (ret)
     {
-        mir::log_error("Failed to set CRTC: %s (%i)", mir::errno_to_cstr(-ret), -ret);
+        if (!presentation_failed)
+        {
+            mir::log_warning(
+                "Output %s: failed to set CRTC: %s (%i). "
+                "Screen contents may be incomplete. Try plugging the monitor in again.",
+                mgk::connector_name(conf->connector).c_str(),
+                mir::errno_to_cstr(-ret),
+                -ret);
+            presentation_failed = true;
+        }
+        else
+        {
+            mir::log_debug("Failed to set CRTC: %s (%i)", mir::errno_to_cstr(-ret), -ret);
+        }
         conf->current_crtc = nullptr;
         return false;
     }
 
     // We might have performed a modeset; update our view of the hardware state accordingly!
     conf->current_crtc = mgk::get_crtc(drm_fd_, conf->current_crtc->crtc_id);
+
+    if (presentation_failed)
+    {
+        mir::log_info("Output %s: presentation recovered",
+                      mgk::connector_name(conf->connector).c_str());
+        presentation_failed = false;
+    }
 
     using_saved_crtc = false;
     return true;
@@ -469,9 +500,16 @@ bool mga::AtomicKMSOutput::page_flip(FBHandle const& fb)
         nullptr);
     if (ret)
     {
-        mir::log_error("Failed to schedule page flip: %s (%i)", mir::errno_to_cstr(-ret), -ret);
+        mir::log_debug("Failed to schedule page flip: %s (%i)", mir::errno_to_cstr(-ret), -ret);
         conf->current_crtc = nullptr;
         return false;
+    }
+
+    if (presentation_failed)
+    {
+        mir::log_info("Output %s: presentation recovered",
+                      mgk::connector_name(conf->connector).c_str());
+        presentation_failed = false;
     }
 
     using_saved_crtc = false;

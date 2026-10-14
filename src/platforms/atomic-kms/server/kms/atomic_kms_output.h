@@ -93,6 +93,7 @@ private:
     mir::Synchronised<Configuration> configuration;
     drmModeCrtc saved_crtc;
     bool using_saved_crtc;
+    bool presentation_failed{false};
     std::atomic<bool> cursor_image_set{false};
 };
 

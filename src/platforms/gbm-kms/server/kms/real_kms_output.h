@@ -81,6 +81,7 @@ private:
     kms::DRMModeCrtcUPtr current_crtc;
     drmModeCrtc saved_crtc;
     bool using_saved_crtc;
+    bool presentation_failed{false};
     bool has_cursor_;
 
     MirPowerMode power_mode;

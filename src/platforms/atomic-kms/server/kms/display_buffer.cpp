@@ -158,7 +158,7 @@ bool mga::DisplaySink::set_crtc(FBHandle const& forced_frame)
      */
     if (!output->set_crtc(forced_frame))
     {
-        mir::log_error("Failed to set DRM CRTC. "
+        mir::log_debug("Failed to set DRM CRTC. "
             "Screen contents may be incomplete. "
             "Try plugging the monitor in again.");
         return false;

@@ -151,8 +151,19 @@ bool mgg::RealKMSOutput::set_crtc(FBHandle const& fb)
 {
     if (!ensure_crtc())
     {
-        mir::log_error("Output %s has no associated CRTC to set a framebuffer on",
-                       mgk::connector_name(connector).c_str());
+        if (!presentation_failed)
+        {
+            mir::log_warning(
+                "Output %s: presentation failed: no associated CRTC. "
+                "Screen contents may be incomplete. Try plugging the monitor in again.",
+                mgk::connector_name(connector).c_str());
+            presentation_failed = true;
+        }
+        else
+        {
+            mir::log_debug("Output %s has no associated CRTC to set a framebuffer on",
+                           mgk::connector_name(connector).c_str());
+        }
         return false;
     }
 
@@ -162,9 +173,29 @@ bool mgg::RealKMSOutput::set_crtc(FBHandle const& fb)
                               &connector->modes[mode_index]);
     if (ret)
     {
-        mir::log_error("Failed to set CRTC: %s (%i)", mir::errno_to_cstr(-ret), -ret);
+        if (!presentation_failed)
+        {
+            mir::log_warning(
+                "Output %s: failed to set CRTC: %s (%i). "
+                "Screen contents may be incomplete. Try plugging the monitor in again.",
+                mgk::connector_name(connector).c_str(),
+                mir::errno_to_cstr(-ret),
+                -ret);
+            presentation_failed = true;
+        }
+        else
+        {
+            mir::log_debug("Failed to set CRTC: %s (%i)", mir::errno_to_cstr(-ret), -ret);
+        }
         current_crtc = nullptr;
         return false;
+    }
+
+    if (presentation_failed)
+    {
+        mir::log_info("Output %s: presentation recovered",
+                      mgk::connector_name(connector).c_str());
+        presentation_failed = false;
     }
 
     using_saved_crtc = false;
@@ -231,17 +262,33 @@ bool mgg::RealKMSOutput::schedule_page_flip(FBHandle const& fb)
 {
     std::unique_lock lg(power_mutex);
     if (power_mode != mir_power_mode_on)
+    {
+        // The sink treats a powered-down output as presented, so close any failure episode here.
+        if (presentation_failed)
+        {
+            mir::log_info("Output %s: presentation recovered",
+                          mgk::connector_name(connector).c_str());
+            presentation_failed = false;
+        }
         return true;
+    }
     if (!current_crtc)
     {
-        mir::log_error("Output %s has no associated CRTC to schedule page flips on",
+        mir::log_debug("Output %s has no associated CRTC to schedule page flips on",
                        mgk::connector_name(connector).c_str());
         return false;
     }
-    return page_flipper->schedule_flip(
+    bool const scheduled = page_flipper->schedule_flip(
         current_crtc->crtc_id,
         fb,
         connector->connector_id);
+    if (scheduled && presentation_failed)
+    {
+        mir::log_info("Output %s: presentation recovered",
+                      mgk::connector_name(connector).c_str());
+        presentation_failed = false;
+    }
+    return scheduled;
 }
 
 void mgg::RealKMSOutput::wait_for_page_flip()
