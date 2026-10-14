@@ -90,7 +90,8 @@ public:
         std::chrono::milliseconds fixed_composite_delay,
         std::shared_ptr<CompositorReport> const& report,
         std::shared_ptr<mg::Cursor> const& cursor,
-        std::chrono::milliseconds recovery_retry_interval) :
+        std::chrono::milliseconds recovery_retry_interval,
+        bool initial_recovering) :
         compositor_factory{db_compositor_factory},
         group(group),
         scene(scene),
@@ -100,6 +101,7 @@ public:
         report{report},
         cursor{cursor},
         recovery_retry_interval{recovery_retry_interval},
+        initial_recovering{initial_recovering},
         started_future{started.get_future()},
         stopped_future{stopped.get_future()}
     {
@@ -109,14 +111,19 @@ public:
     try
     {
         mir::set_thread_name("Mir/Comp");
+        bool recovering = initial_recovering;
+        bool failure_observed = false;
         auto const signal_when_stopped = std::experimental::scope_exit(
-            [this]()
+            [this, &recovering]()
             {
+                /* Stopping while still recovering means presentation was never
+                 * re-confirmed; seed recovery mode in the next compositor run. */
+                if (recovering)
+                    ended_recovering = true;
                 stopped.set_value();
             });
 
         std::vector<std::tuple<mg::DisplaySink*, std::unique_ptr<mc::DisplayBufferCompositor>>> compositors;
-        bool recovering = false;
         group.for_each_display_sink(
         [this, &compositors](mg::DisplaySink& sink)
         {
@@ -223,6 +230,7 @@ public:
                                 mir::log_warning(
                                     "Display presentation failed; compositing recovery frames");
                             }
+                            failure_observed = true;
                             recovering = true;
                             retry = true;
                             /* Schedule a recovery frame without waiting for new client
@@ -237,7 +245,10 @@ public:
                             if (recovering && full_scene_composited)
                             {
                                 recovering = false;
-                                mir::log_info("Display presentation recovered");
+                                if (failure_observed)
+                                {
+                                    mir::log_info("Display presentation recovered");
+                                }
                             }
                             break;
                         }
@@ -322,6 +333,9 @@ public:
         stopped_future.get();
     }
 
+    /* Plain bool: only read by destroy_compositing_threads(), after joining */
+    bool ended_recovering{false};
+
 private:
     std::shared_ptr<mc::DisplayBufferCompositorFactory> const compositor_factory;
     mg::DisplaySyncGroup& group;
@@ -333,6 +347,7 @@ private:
     std::shared_ptr<CompositorReport> const report;
     std::shared_ptr<mg::Cursor> const cursor;
     std::chrono::milliseconds const recovery_retry_interval;
+    bool const initial_recovering;
     std::promise<void> started;
     std::future<void> started_future;
     std::promise<void> stopped;
@@ -451,11 +466,22 @@ void mc::MultiThreadedCompositor::stop()
 void mc::MultiThreadedCompositor::create_compositing_threads()
 {
     /* Start the display buffer compositing threads */
-    display->for_each_display_sync_group([this](mg::DisplaySyncGroup& group)
+    /* Carry unfinished recovery across a stop/start cycle */
+    bool const resume_recovery = recovery_pending.exchange(false);
+    if (resume_recovery)
+    {
+        mir::log_info(
+            "Presentation recovery was unfinished when the compositor stopped; "
+            "compositing recovery frames on all display groups until "
+            "presentation is confirmed");
+    }
+    display->for_each_display_sync_group(
+        [this, resume_recovery](mg::DisplaySyncGroup& group)
     {
         auto thread_functor = std::make_unique<mc::CompositingFunctor>(
             display_buffer_compositor_factory, group, scene, display_listener,
-            fixed_composite_delay, report, cursor, recovery_retry_interval);
+            fixed_composite_delay, report, cursor, recovery_retry_interval,
+            resume_recovery);
 
         mir::thread_pool_executor.spawn(std::ref(*thread_functor));
         thread_functors.push_back(std::move(thread_functor));
@@ -484,7 +510,11 @@ void mc::MultiThreadedCompositor::destroy_compositing_threads()
         f->stop();
 
     for (auto& f : thread_functors)
+    {
         f->wait_until_stopped();
+        if (f->ended_recovering)
+            recovery_pending = true;
+    }
 
     thread_functors.clear();
 }

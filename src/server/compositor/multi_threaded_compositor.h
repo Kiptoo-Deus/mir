@@ -86,6 +86,7 @@ private:
     std::vector<std::unique_ptr<CompositingFunctor>> thread_functors;
 
     std::atomic<CompositorState> state;
+    std::atomic<bool> recovery_pending{false};
     std::chrono::milliseconds fixed_composite_delay;
     std::chrono::milliseconds recovery_retry_interval;
     bool compose_on_start;
