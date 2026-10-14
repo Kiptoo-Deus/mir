@@ -474,3 +474,38 @@ INSTANTIATE_TEST_SUITE_P(
         OutputState{mir_output_filter_none, mg::transformation(mir_orientation_right)},
         OutputState{mir_output_filter_none, mg::transformation(mir_mirror_mode_horizontal)},
         OutputState{mir_output_filter_none, mg::transformation(mir_mirror_mode_vertical)}));
+
+TEST_F(DirectPresentationDefaultDisplayBufferCompositor, recovery_mode_composites_eligible_fullscreen_through_gl)
+{
+    using namespace testing;
+    EXPECT_CALL(*output_filter, filter()).Times(1);
+    EXPECT_CALL(display_sink, transformation()).WillOnce(Return(no_transformation));
+    EXPECT_CALL(*framebuffer_provider, buffer_to_framebuffer(_)).Times(0);
+    EXPECT_CALL(display_sink, overlay(_)).Times(0);
+    EXPECT_CALL(mock_renderer, suspend()).Times(0);
+    EXPECT_CALL(mock_renderer, render(ContainerEq(mg::RenderableList{fullscreen})));
+    EXPECT_CALL(display_sink, set_next_image(_));
+
+    EXPECT_EQ(
+        mc::CompositionResult::composited,
+        compositor->composite(make_scene_elements({fullscreen}), mc::CompositionMode::recovery));
+}
+
+TEST_F(DefaultDisplayBufferCompositor, recovery_mode_with_empty_scene_after_first_render_renders_through_gl)
+{
+    using namespace testing;
+
+    mc::DefaultDisplayBufferCompositor compositor(
+        display_sink,
+        gl_provider,
+        mt::fake_shared(mock_renderer),
+        std::make_shared<mtd::StubOutputFilter>(),
+        mr::null_compositor_report());
+
+    compositor.composite(make_scene_elements({big}), mc::CompositionMode::normal);
+
+    EXPECT_CALL(mock_renderer, render(ContainerEq(mg::RenderableList{})));
+    EXPECT_EQ(
+        mc::CompositionResult::composited,
+        compositor.composite(make_scene_elements({}), mc::CompositionMode::recovery));
+}
