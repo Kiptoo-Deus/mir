@@ -1244,3 +1244,82 @@ TEST(MultiThreadedCompositor, recovery_retries_are_throttled)
     compositor.stop();
 }
 
+TEST(MultiThreadedCompositor, recovery_carries_across_restart_until_presentation_is_confirmed)
+{
+    using namespace testing;
+
+    auto display = std::make_shared<ScriptedDisplay>(1);
+    auto& group = *display->groups[0];
+    group.set_default_result(mg::PresentationResult::failed);
+    auto scene = std::make_shared<StubScene>();
+    auto factory = std::make_shared<ModeRecordingDisplayBufferCompositorFactory>();
+    /* A long retry interval keeps run 1 to a single post, making the restart
+     * deterministic
+     */
+    std::chrono::milliseconds const retry_interval{2s};
+    mc::MultiThreadedCompositor compositor{
+        display, factory, scene, null_display_listener, null_report, stub_cursor,
+        default_delay, true, retry_interval};
+
+    /* Run 1 fails and is still recovering when the compositor stops */
+    compositor.start();
+    ASSERT_TRUE(group.wait_for_posts(1, 2s));
+    compositor.stop();
+
+    /* Run 2 is seeded into recovery: its first frame is a recovery frame, and
+     * the confirmed full GL frame ends recovery
+     */
+    group.set_default_result(mg::PresentationResult::presented);
+    compositor.start();
+    ASSERT_TRUE(group.wait_for_posts(2, 2s));
+    compositor.stop();
+
+    /* Run 3 must start in normal mode: run 2 confirmed presentation, and a
+     * healthy exit does not re-arm recovery
+     */
+    compositor.start();
+    ASSERT_TRUE(group.wait_for_posts(3, 2s));
+    EXPECT_THAT(
+        factory->recorded_modes(),
+        ElementsAre(mc::CompositionMode::normal, mc::CompositionMode::recovery, mc::CompositionMode::normal));
+
+    compositor.stop();
+}
+
+TEST(MultiThreadedCompositor, healthy_group_exit_does_not_clear_pending_recovery)
+{
+    using namespace testing;
+
+    auto display = std::make_shared<ScriptedDisplay>(2);
+    auto& group1 = *display->groups[0];
+    auto& group2 = *display->groups[1];
+    group1.set_default_result(mg::PresentationResult::failed);
+    auto scene = std::make_shared<StubScene>();
+    auto factory = std::make_shared<ModeRecordingDisplayBufferCompositorFactory>();
+    mc::MultiThreadedCompositor compositor{
+        display, factory, scene, null_display_listener, null_report, stub_cursor, default_delay, true};
+
+    compositor.start();
+
+    ASSERT_TRUE(group1.wait_for_posts(1, 2s));
+    ASSERT_TRUE(group2.wait_for_posts(1, 2s));
+    compositor.stop();
+
+    /* Catching a last-writer-wins regression relies on the healthy group
+     * aggregating after the recovering group in functor order
+     */
+    auto const p1 = group1.count_posts();
+    auto const p2 = group2.count_posts();
+    auto const modes_1 = factory->recorded_modes().size();
+
+    /* Both groups are seeded into recovery; each composes one recovery frame
+     * and confirms it
+     */
+    group1.set_default_result(mg::PresentationResult::presented);
+    compositor.start();
+    ASSERT_TRUE(group1.wait_for_posts(p1 + 1, 2s));
+    ASSERT_TRUE(group2.wait_for_posts(p2 + 1, 2s));
+    EXPECT_EQ(mc::CompositionMode::recovery, factory->recorded_modes()[modes_1]);
+    EXPECT_EQ(mc::CompositionMode::recovery, factory->recorded_modes()[modes_1 + 1]);
+    compositor.stop();
+}
