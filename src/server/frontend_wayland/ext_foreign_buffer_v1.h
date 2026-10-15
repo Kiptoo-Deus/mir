@@ -27,7 +27,6 @@
 
 namespace mir
 {
-class Executor;
 namespace graphics
 {
 class Buffer;
@@ -35,6 +34,7 @@ class GraphicBufferAllocator;
 }
 namespace frontend
 {
+class WaylandExecutor;
 class WlSurface;
 
 /// An opaque wl_buffer handed out by an ext_foreign_buffer_session_v1.
@@ -74,7 +74,7 @@ private:
 auto create_ext_foreign_buffer_manager_v1(
     wl_display* display,
     std::shared_ptr<graphics::GraphicBufferAllocator> const& allocator,
-    std::shared_ptr<Executor> const& executor)
+    std::shared_ptr<WaylandExecutor> const& executor)
     -> std::shared_ptr<wayland::ForeignBufferManagerV1::Global>;
 }
 }

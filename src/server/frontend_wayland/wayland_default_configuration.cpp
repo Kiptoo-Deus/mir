@@ -47,6 +47,7 @@
 #include "virtual_keyboard_v1.h"
 #include "virtual_pointer_v1.h"
 #include "wayland_connector.h"
+#include "wayland_executor.h"
 #include "wl_seat.h"
 #include "wl_shell.h"
 #include "wlr_screencopy_v1.h"
