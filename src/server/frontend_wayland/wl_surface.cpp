@@ -548,15 +548,8 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
                 current_foreign_buffer = {};
             }
 
-            if (auto const foreign_buffer = ExtForeignBufferV1::from(weak_buffer.value()))
-            {
-                // The content is a compositor-internal, so there is nothing to import through the allocator.
-                current_buffer = foreign_buffer->content();
-                current_foreign_buffer = mw::make_weak(foreign_buffer);
-                foreign_buffer->add_listener(*this);
-                executor_send_frame_callbacks();
-            }
-            else if (auto const shm_buffer = ShmBuffer::from(weak_buffer.value()))
+            
+            if (auto const shm_buffer = ShmBuffer::from(weak_buffer.value()))
             {
                 current_buffer = allocator->buffer_from_shm(
                     shm_buffer->data(),
@@ -567,6 +560,13 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
                     sw_buffer_committed,
                     wl_resource_get_client(resource),
                     current_buffer->id().as_value());
+            }
+            else if (auto const foreign_buffer = ExtForeignBufferV1::from(weak_buffer.value()))
+            {
+                current_buffer = foreign_buffer->content();
+                current_foreign_buffer = mw::make_weak(foreign_buffer);
+                foreign_buffer->add_listener(*this);
+                executor_send_frame_callbacks();
             }
             else
             {

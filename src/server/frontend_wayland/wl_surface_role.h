@@ -42,8 +42,8 @@ public:
     virtual auto total_offset() const -> geometry::Displacement { return {}; }
     virtual auto scene_surface() const -> std::optional<std::shared_ptr<scene::Surface>> = 0;
     virtual void refresh_surface_data_now() = 0;
-    /// Called when the compositor changes the size of a buffer it owns (e.g. a foreign buffer receiving
-    /// its first or resized content), so the surface's buffer size changed without a client commit.
+    /// Update the surface state to reflect changes to the size of a compositor owned buffer (e.g. a foreign buffer receiving
+    /// its first or resized content). Allows the surface's buffer size to change without a client commit.
     virtual void compositor_owned_buffer_changed_size() { refresh_surface_data_now(); }
     virtual void commit(WlSurfaceState const& state) = 0;
     virtual void surface_destroyed() = 0;
