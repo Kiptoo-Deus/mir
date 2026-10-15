@@ -170,7 +170,7 @@ public:
 
     /// Called by the [ExtForeignBufferV1] that this surface is displaying when the compositor refreshes
     /// its content, so that the new content reaches the scene without the client re-committing.
-    void foreign_buffer_updated();
+    void advise_foreign_buffer_content_changed();
 
     void set_fractional_scale(FractionalScaleV1* fractional_scale);
     auto get_fractional_scale() const -> wayland::Weak<FractionalScaleV1>;

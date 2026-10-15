@@ -681,7 +681,7 @@ auto mf::WlSurface::submit_current_buffer() -> bool
     return size_changed;
 }
 
-void mf::WlSurface::foreign_buffer_updated()
+void mf::WlSurface::advise_foreign_buffer_content_changed()
 {
     // The client may have attached something else since this surface registered as a consumer.
     if (!current_foreign_buffer)

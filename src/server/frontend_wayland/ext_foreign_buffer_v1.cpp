@@ -431,7 +431,7 @@ void mf::ExtForeignBufferV1::set_content(std::shared_ptr<mg::Buffer> buffer)
     std::erase_if(consumers, [](auto const& consumer) { return !consumer; });
     for (auto const& consumer : consumers)
     {
-        consumer.value().foreign_buffer_updated();
+        consumer.value().advise_foreign_buffer_content_changed();
     }
 }
 
