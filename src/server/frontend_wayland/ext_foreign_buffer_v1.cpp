@@ -131,11 +131,22 @@ public:
 
     void maybe_capture_frame() override;
 
-    void set_buffer_constraints(geom::Size const& size) override;
+    void set_buffer_constraints(geom::Size const& buffer_size, geom::Size const& logical_size) override;
 
     void set_stopped() override;
 
 private:
+    /// The size of the capture source as reported by the backend.
+    struct SourceSize
+    {
+        /// The pixel size that composited captures are rendered at.
+        geom::Size buffer_size;
+        /// The size sent as the logical size in the size event.
+        geom::Size logical_size;
+
+        auto operator==(SourceSize const&) const -> bool = default;
+    };
+
     /// The metadata described by the size event.
     struct FrameMetadata
     {
@@ -149,9 +160,9 @@ private:
     {
         std::shared_ptr<mg::Buffer> buffer;
         /// The source size at the time the frame was captured.
-        geom::Size logical_size;
+        SourceSize source_size;
 
-        auto metadata() const -> FrameMetadata { return {buffer->size(), logical_size}; }
+        auto metadata() const -> FrameMetadata { return {buffer->size(), source_size.logical_size}; }
     };
 
     void capture_frame();
@@ -168,10 +179,8 @@ private:
     /// first frame is published after get_buffer(). Any later frame with different metadata
     /// invalidates the buffer, so the client has to request a new one.
     std::optional<FrameMetadata> reported_metadata;
-    /// The size of the capture source, as reported by the backend. Composited captures are
-    /// rendered at this size, and it is sent as the logical size in the size event. Empty
-    /// until the backend reports it, and capture is skipped while it is empty.
-    geom::Size source_size;
+    /// Empty until the backend reports it, and capture is skipped while it is empty.
+    SourceSize source_size;
     bool capture_in_flight{false};
     bool invalidated{false};
     bool stopped{false};
@@ -224,7 +233,7 @@ void ExtForeignBufferSessionV1::maybe_capture_frame()
 
 void ExtForeignBufferSessionV1::capture_frame()
 {
-    if (stopped || capture_in_flight || !backend->has_damage() || source_size == geom::Size{})
+    if (stopped || capture_in_flight || !backend->has_damage() || source_size.buffer_size == geom::Size{})
     {
         return;
     }
@@ -241,13 +250,13 @@ void ExtForeignBufferSessionV1::capture_frame()
 
     // If acquiring a zero-copy buffer fails, then composite the content into a buffer on the side.
     // It only replaces `latest_frame` once the capture succeeds.
-    auto const logical_size = source_size;
-    auto const target = pool.next(logical_size);
+    auto const captured_size = source_size;
+    auto const target = pool.next(captured_size.buffer_size);
     capture_in_flight = true;
     backend->begin_capture(
         mrs::as_write_mappable(target),
-        {{}, logical_size},
-        [weak_self = mw::make_weak(this), target, logical_size](
+        {{}, captured_size.buffer_size},
+        [weak_self = mw::make_weak(this), target, captured_size](
             mf::ExtImageCopyBackend::CaptureResult const& result)
         {
             if (!weak_self)
@@ -268,7 +277,7 @@ void ExtForeignBufferSessionV1::capture_frame()
 
             if (result)
             {
-                self.frame_captured({target, logical_size});
+                self.frame_captured({target, captured_size});
             }
 
             // Damage that arrived while the capture was running was skipped, and nothing else
@@ -307,7 +316,7 @@ void ExtForeignBufferSessionV1::publish(Frame const& frame)
         // A frame captured before the source resized would be invalidated as soon as it was
         // described, so wait for the capture at the new size instead. Once stopped, no such
         // capture will come, and the last content is all there is.
-        if (!stopped && frame.logical_size != source_size)
+        if (!stopped && frame.source_size != source_size)
         {
             return;
         }
@@ -332,8 +341,9 @@ void ExtForeignBufferSessionV1::publish(Frame const& frame)
     foreign_buffer.value().set_content(frame.buffer);
 }
 
-void ExtForeignBufferSessionV1::set_buffer_constraints(geom::Size const& size)
+void ExtForeignBufferSessionV1::set_buffer_constraints(geom::Size const& buffer_size, geom::Size const& logical_size)
 {
+    SourceSize const size{buffer_size, logical_size};
     if (size == source_size)
     {
         return;

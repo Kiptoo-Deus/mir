@@ -156,7 +156,7 @@ auto mf::ExtOutputImageCopyBackend::output_config_changed(graphics::DisplayConfi
 {
     // Send buffer constraints matching new output configuration
     auto const buffer_size = config.modes[config.current_mode_index].size;
-    session->set_buffer_constraints(buffer_size);
+    session->set_buffer_constraints(buffer_size, config.extents().size);
 
     // Mark the whole buffer as damaged
     output_space_area = output.value().current_config().extents();

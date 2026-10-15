@@ -281,7 +281,8 @@ mf::ExtImageCopyCaptureSessionV1::~ExtImageCopyCaptureSessionV1()
 {
 }
 
-void mf::ExtImageCopyCaptureSessionV1::set_buffer_constraints(geom::Size const &buffer_size)
+void mf::ExtImageCopyCaptureSessionV1::set_buffer_constraints(
+    geom::Size const &buffer_size, [[maybe_unused]] geom::Size const& logical_size)
 {
     send_buffer_size_event(
         buffer_size.width.as_uint32_t(), buffer_size.height.as_uint32_t());
@@ -531,7 +532,7 @@ void mf::ExtImageCopyCaptureCursorSessionV1::ImageCopyBackend::image_set_to(
     if (size != output_space_area.size)
     {
         output_space_area = geom::Rectangle{{0, 0}, size};
-        session->set_buffer_constraints(size);
+        session->set_buffer_constraints(size, size);
     }
     apply_damage(std::nullopt);
 }

@@ -194,7 +194,7 @@ void mf::ExtForeignToplevelImageCopyBackend::surface_resized()
             return;
         }
 
-        session->set_buffer_constraints(window_size);
+        session->set_buffer_constraints(window_size, window_size);
         output_space_area = {{}, window_size};
         apply_damage(std::nullopt);
     }

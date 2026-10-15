@@ -48,7 +48,10 @@ class ExtImageCopyBackendSession
 public:
     virtual ~ExtImageCopyBackendSession() = default;
     virtual void maybe_capture_frame() = 0;
-    virtual void set_buffer_constraints(geometry::Size const& size) = 0;
+    /// \param buffer_size  the pixel size of a buffer that [ExtImageCopyBackend::begin_capture()] captures into
+    /// \param logical_size the size of the source in logical coordinates, which differs from
+    ///                     \p buffer_size for scaled or rotated outputs
+    virtual void set_buffer_constraints(geometry::Size const& buffer_size, geometry::Size const& logical_size) = 0;
     virtual void set_stopped() = 0;
 };
 
@@ -134,7 +137,7 @@ public:
         ExtImageCopyBackendFactory const& backend_factory);
     ~ExtImageCopyCaptureSessionV1();
 
-    void set_buffer_constraints(geometry::Size const& buffer_size) override;
+    void set_buffer_constraints(geometry::Size const& buffer_size, geometry::Size const& logical_size) override;
     void set_stopped() override;
     void maybe_capture_frame() override;
 
