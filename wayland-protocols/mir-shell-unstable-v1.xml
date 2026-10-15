@@ -315,6 +315,11 @@
       dialog is open.
     </description>
 
+    <enum name="error">
+      <entry name="invalid_archetype" value="0"
+             summary="the archetype has been removed from the surface"/>
+    </enum>
+
     <request name="reposition">
       <description summary="recalculate the satellite's location">
         Reposition an already-mapped satellite. The satellite will be placed
@@ -627,6 +632,11 @@
       Dismissing a menu also dismisses every menu it is an ancestor of.
     </description>
 
+    <enum name="error">
+      <entry name="invalid_archetype" value="0"
+             summary="the archetype has been removed from the surface"/>
+    </enum>
+
     <request name="reposition">
       <description summary="recalculate the menu's location">
         Reposition an already-mapped menu. The menu will be placed given the
@@ -687,6 +697,11 @@
       when the pointer leaves the region it describes, when the user starts
       typing, or when the parent is deactivated.
     </description>
+
+    <enum name="error">
+      <entry name="invalid_archetype" value="0"
+             summary="the archetype has been removed from the surface"/>
+    </enum>
 
     <request name="reposition">
       <description summary="recalculate the tip's location">
