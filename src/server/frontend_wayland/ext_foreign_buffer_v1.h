@@ -60,6 +60,9 @@ public:
     /// Register a surface to be refreshed whenever the compositor updates the content.
     void add_listener(WlSurface& surface);
 
+    /// Unregister a surface listener.
+    void remove_listener(WlSurface& surface);
+
     /// Replace the content and push the update to every registered consumer.
     void set_content(std::shared_ptr<graphics::Buffer> buffer);
 

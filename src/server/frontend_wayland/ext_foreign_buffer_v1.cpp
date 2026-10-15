@@ -418,6 +418,12 @@ void mf::ExtForeignBufferV1::add_listener(WlSurface& surface)
     }
 }
 
+void mf::ExtForeignBufferV1::remove_listener(WlSurface& surface)
+{
+    auto const weak_surface = mw::make_weak(&surface);
+    std::erase_if(consumers, [&weak_surface](auto const& consumer) { return weak_surface == consumer; });
+}
+
 void mf::ExtForeignBufferV1::set_content(std::shared_ptr<mg::Buffer> buffer)
 {
     current = std::move(buffer);

@@ -540,7 +540,13 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
                         });
                 };
 
-            current_foreign_buffer = {};
+            // If we have a current buffer attached currently, let's stop listening on it.
+            if (current_foreign_buffer)
+            {
+                auto foreign_buffer = ExtForeignBufferV1::from(weak_buffer.value());
+                foreign_buffer->remove_listener(*this);
+                current_foreign_buffer = {};
+            }
 
             if (auto const foreign_buffer = ExtForeignBufferV1::from(weak_buffer.value()))
             {
